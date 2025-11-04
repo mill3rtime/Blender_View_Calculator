@@ -45,27 +45,29 @@ The panel will display all calculated measurements:
 - Horizontal FOV (in degrees)
 
 ### Ground Coverage Section
-- **Forward Distance**: How far forward from ego_car the camera can see on the ground (positive Y direction)
-- **Backward Distance**: How far backward from ego_car the camera can see on the ground (negative Y direction)
+- **Forward Distance**: Distance from ego_car to the top-center edge of camera view on the ground (measured along center line)
+- **Backward Distance**: Distance from ego_car to the bottom-center edge of camera view on the ground (measured along center line)
 
 ### Total Coverage Section
-- **Horizontal Distance**: Total left-to-right coverage on the ground
-- **Vertical Distance**: Total front-to-back coverage on the ground
+- **Horizontal Distance**: Total left-to-right coverage on the ground (measured at widest points)
+- **Vertical Distance**: Total front-to-back coverage on the ground (measured along center line)
 
 ## How It Works
 
 The add-on:
 1. Reads the camera's lens focal length and sensor size to calculate FOV angles
 2. Detects your "road_plane" object (if present) to use as the ground reference
-3. Projects the camera's frustum corners onto the ground plane
-4. Calculates the bounding box of the visible ground area
-5. Measures distances from the ego_car position to various points in the visible area
+3. Projects the camera's frustum corners onto the ground plane for horizontal measurements
+4. Projects the top-center and bottom-center rays onto the ground plane for forward/backward measurements
+5. Calculates distances from the ego_car position along the camera's center line (matching what you see in the rendered view)
 
 ## Technical Details
 
 - If a "road_plane" object exists, the add-on uses its position and orientation as the ground reference
 - Otherwise, the ground plane defaults to Z=0 in world coordinates
 - Distance measurements are in Blender units (typically meters)
+- Forward/backward distances are measured along the **center line** of the camera view (top-center and bottom-center edges)
+- Horizontal distance is measured using the **corner** intersections (widest left/right points)
 - The calculation accounts for camera position, rotation, and lens properties
 - The add-on uses ray-plane intersection mathematics to determine where the camera view meets the ground
 - Works with tilted or rotated ground planes when using a "road_plane" object

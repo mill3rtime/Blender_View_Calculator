@@ -146,7 +146,7 @@ class CameraFOVCalculator:
             direction_world = cam_matrix.to_quaternion() @ corner.normalized()
             corners_world.append(direction_world)
 
-        # Find intersections with ground plane
+        # Find intersections with ground plane for corners (used for horizontal distance)
         intersections = []
         for direction in corners_world:
             intersection = CameraFOVCalculator.ray_plane_intersection(
@@ -168,11 +168,58 @@ class CameraFOVCalculator:
                 'message': f"Camera is {cam_height:.2f}m above ground plane but not looking at it"
             }
 
-        # Calculate bounding box of intersections
+        # Calculate center-line intersections for forward/backward measurements
+        # Get sensor dimensions to calculate center rays
+        cam_data = camera_obj.data
+        scene = bpy.context.scene
+        aspect_ratio = scene.render.resolution_x / scene.render.resolution_y
+
+        if cam_data.sensor_fit == 'VERTICAL':
+            sensor_height = cam_data.sensor_height
+            sensor_width = sensor_height * aspect_ratio
+        else:  # HORIZONTAL or AUTO
+            sensor_width = cam_data.sensor_width
+            sensor_height = sensor_width / aspect_ratio
+
+        focal_length = cam_data.lens
+        half_height = sensor_height / (2 * focal_length)
+
+        # Top-center and bottom-center rays in camera space
+        top_center_cam = Vector((0, half_height, -1)).normalized()
+        bottom_center_cam = Vector((0, -half_height, -1)).normalized()
+
+        # Transform to world space
+        top_center_world = cam_matrix.to_quaternion() @ top_center_cam
+        bottom_center_world = cam_matrix.to_quaternion() @ bottom_center_cam
+
+        # Calculate intersections
+        top_center_intersection = CameraFOVCalculator.ray_plane_intersection(
+            cam_location,
+            top_center_world,
+            ground_plane_point,
+            ground_plane_normal
+        )
+
+        bottom_center_intersection = CameraFOVCalculator.ray_plane_intersection(
+            cam_location,
+            bottom_center_world,
+            ground_plane_point,
+            ground_plane_normal
+        )
+
+        # Use center intersections for forward/backward, corners for horizontal
+        if top_center_intersection is None or bottom_center_intersection is None:
+            # Fall back to corner-based measurements if center rays fail
+            min_y = min(p.y for p in intersections)
+            max_y = max(p.y for p in intersections)
+        else:
+            # Use center-line measurements
+            max_y = top_center_intersection.y
+            min_y = bottom_center_intersection.y
+
+        # Calculate horizontal distance from corners
         min_x = min(p.x for p in intersections)
         max_x = max(p.x for p in intersections)
-        min_y = min(p.y for p in intersections)
-        max_y = max(p.y for p in intersections)
 
         # Calculate distances relative to ego_car if provided
         ego_y = 0
@@ -191,7 +238,8 @@ class CameraFOVCalculator:
             'ego_to_top': max_y - ego_y,
             'ego_to_bottom': min_y - ego_y,
             'ego_y': ego_y,
-            'ground_plane_z': ground_plane_point.z
+            'ground_plane_z': ground_plane_point.z,
+            'using_center_line': top_center_intersection is not None and bottom_center_intersection is not None
         }
 
         return results
@@ -251,7 +299,9 @@ class CAMERA_OT_calculate_fov(Operator):
         scene.camera_horizontal_dist = f"{coverage['horizontal_distance']:.2f} m"
         scene.camera_vertical_dist = f"{coverage['vertical_distance']:.2f} m"
 
-        self.report({'INFO'}, f"Camera FOV calculated successfully ({coverage['num_intersections']} intersections)")
+        # Report success with measurement method
+        method = "center-line" if coverage.get('using_center_line', False) else "corner-based"
+        self.report({'INFO'}, f"Camera FOV calculated successfully using {method} measurements")
         return {'FINISHED'}
 
 
