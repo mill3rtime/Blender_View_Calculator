@@ -237,7 +237,7 @@ class CAMERA_PT_fov_panel(Panel):
 
         # Display results
         box = layout.box()
-        box.label(text="Field of View:", icon='AXIS_ANGLE')
+        box.label(text="Field of View:", icon='ORIENTATION_VIEW')
         row = box.row()
         row.label(text=f"Vertical FOV:")
         row.label(text=getattr(scene, 'camera_vfov', 'N/A'))
