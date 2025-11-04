@@ -106,14 +106,32 @@ class CameraFOVCalculator:
         return corners
 
     @staticmethod
-    def calculate_ground_coverage(camera_obj, ego_car_obj=None):
-        """Calculate where the camera view intersects the ground plane (z=0)"""
+    def get_ground_plane_info(ground_plane_obj=None):
+        """Get ground plane position and normal from object or use default Z=0"""
+        if ground_plane_obj is not None:
+            # Get the ground plane's world position and normal
+            plane_matrix = ground_plane_obj.matrix_world
+            plane_location = plane_matrix.to_translation()
+            # Assuming the plane's local Z-axis points up (normal direction)
+            plane_normal = plane_matrix.to_quaternion() @ Vector((0, 0, 1))
+            plane_normal.normalize()
+            return plane_location, plane_normal
+        else:
+            # Default: Z=0 plane with upward normal
+            return Vector((0, 0, 0)), Vector((0, 0, 1))
+
+    @staticmethod
+    def calculate_ground_coverage(camera_obj, ego_car_obj=None, ground_plane_obj=None):
+        """Calculate where the camera view intersects the ground plane"""
         if camera_obj is None or camera_obj.type != 'CAMERA':
             return None
 
         # Get camera world matrix
         cam_matrix = camera_obj.matrix_world
         cam_location = cam_matrix.to_translation()
+
+        # Get ground plane info
+        ground_plane_point, ground_plane_normal = CameraFOVCalculator.get_ground_plane_info(ground_plane_obj)
 
         # Get frustum corners in camera space
         corners_cam_space = CameraFOVCalculator.get_camera_frustum_corners(camera_obj)
@@ -127,10 +145,7 @@ class CameraFOVCalculator:
             direction_world = cam_matrix.to_quaternion() @ corner.normalized()
             corners_world.append(direction_world)
 
-        # Find intersections with ground plane (z=0)
-        ground_plane_point = Vector((0, 0, 0))
-        ground_plane_normal = Vector((0, 0, 1))
-
+        # Find intersections with ground plane
         intersections = []
         for direction in corners_world:
             intersection = CameraFOVCalculator.ray_plane_intersection(
@@ -142,8 +157,15 @@ class CameraFOVCalculator:
             if intersection is not None:
                 intersections.append(intersection)
 
+        # If no corners intersect, the camera might be looking up or parallel to ground
         if len(intersections) == 0:
-            return None
+            # Check if camera is above ground plane
+            cam_height = (cam_location - ground_plane_point).dot(ground_plane_normal)
+            return {
+                'error': 'no_intersection',
+                'camera_height': cam_height,
+                'message': f"Camera is {cam_height:.2f}m above ground plane but not looking at it"
+            }
 
         # Calculate bounding box of intersections
         min_x = min(p.x for p in intersections)
@@ -158,6 +180,7 @@ class CameraFOVCalculator:
 
         results = {
             'intersections': intersections,
+            'num_intersections': len(intersections),
             'min_x': min_x,
             'max_x': max_x,
             'min_y': min_y,
@@ -166,7 +189,8 @@ class CameraFOVCalculator:
             'vertical_distance': max_y - min_y,
             'ego_to_top': max_y - ego_y,
             'ego_to_bottom': min_y - ego_y,
-            'ego_y': ego_y
+            'ego_y': ego_y,
+            'ground_plane_z': ground_plane_point.z
         }
 
         return results
@@ -192,6 +216,13 @@ class CAMERA_OT_calculate_fov(Operator):
         if ego_car_obj is None:
             self.report({'WARNING'}, "Object 'ego_car' not found in scene. Measurements will be relative to world origin.")
 
+        # Try to find ground plane (road_plane)
+        ground_plane_obj = bpy.data.objects.get("road_plane")
+        if ground_plane_obj is not None:
+            self.report({'INFO'}, f"Using 'road_plane' at Z={ground_plane_obj.matrix_world.to_translation().z:.2f}m")
+        else:
+            self.report({'INFO'}, "Using default ground plane at Z=0")
+
         # Calculate FOV
         vfov, hfov = CameraFOVCalculator.get_camera_fov(camera_obj)
         if vfov is None:
@@ -203,9 +234,14 @@ class CAMERA_OT_calculate_fov(Operator):
         scene.camera_hfov = f"{hfov:.2f}°"
 
         # Calculate ground coverage
-        coverage = CameraFOVCalculator.calculate_ground_coverage(camera_obj, ego_car_obj)
+        coverage = CameraFOVCalculator.calculate_ground_coverage(camera_obj, ego_car_obj, ground_plane_obj)
         if coverage is None:
             self.report({'ERROR'}, "Failed to calculate ground coverage. Camera may not be looking at the ground plane.")
+            return {'CANCELLED'}
+
+        # Check for error in coverage results
+        if 'error' in coverage:
+            self.report({'ERROR'}, coverage.get('message', 'Failed to calculate ground coverage'))
             return {'CANCELLED'}
 
         # Store in scene properties
@@ -214,7 +250,7 @@ class CAMERA_OT_calculate_fov(Operator):
         scene.camera_horizontal_dist = f"{coverage['horizontal_distance']:.2f} m"
         scene.camera_vertical_dist = f"{coverage['vertical_distance']:.2f} m"
 
-        self.report({'INFO'}, "Camera FOV calculated successfully")
+        self.report({'INFO'}, f"Camera FOV calculated successfully ({coverage['num_intersections']} intersections)")
         return {'FINISHED'}
 
 
