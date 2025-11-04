@@ -29,6 +29,7 @@ This add-on calculates and displays:
 Your Blender scene must have:
 - A camera object named **"main_cam"** - The camera to analyze
 - An object named **"ego_car"** - The reference point for distance measurements (optional, will use world origin if not found)
+- An object named **"road_plane"** - Your ground plane mesh (optional, will use Z=0 plane if not found)
 
 ## Usage
 
@@ -55,16 +56,19 @@ The panel will display all calculated measurements:
 
 The add-on:
 1. Reads the camera's lens focal length and sensor size to calculate FOV angles
-2. Projects the camera's frustum corners onto the ground plane (Z=0)
-3. Calculates the bounding box of the visible ground area
-4. Measures distances from the ego_car position to various points in the visible area
+2. Detects your "road_plane" object (if present) to use as the ground reference
+3. Projects the camera's frustum corners onto the ground plane
+4. Calculates the bounding box of the visible ground area
+5. Measures distances from the ego_car position to various points in the visible area
 
 ## Technical Details
 
-- The ground plane is assumed to be at Z=0 in world coordinates
+- If a "road_plane" object exists, the add-on uses its position and orientation as the ground reference
+- Otherwise, the ground plane defaults to Z=0 in world coordinates
 - Distance measurements are in Blender units (typically meters)
 - The calculation accounts for camera position, rotation, and lens properties
 - The add-on uses ray-plane intersection mathematics to determine where the camera view meets the ground
+- Works with tilted or rotated ground planes when using a "road_plane" object
 
 ## Troubleshooting
 
