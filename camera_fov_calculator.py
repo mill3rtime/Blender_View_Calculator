@@ -94,13 +94,14 @@ class CameraFOVCalculator:
         half_height = sensor_height / (2 * focal_length)
         half_width = sensor_width / (2 * focal_length)
 
-        # Define corners in camera space (normalized direction vectors)
-        # Using a reference distance of 1 unit
+        # Define corners in camera space (direction vectors)
+        # In Blender camera space: +X is right, +Y is up, -Z is forward
+        # Using a reference distance of 1 unit in the -Z direction
         corners = [
-            Vector((-half_width, 1, half_height)),   # Top-left
-            Vector((half_width, 1, half_height)),    # Top-right
-            Vector((half_width, 1, -half_height)),   # Bottom-right
-            Vector((-half_width, 1, -half_height)),  # Bottom-left
+            Vector((-half_width, half_height, -1)),   # Top-left
+            Vector((half_width, half_height, -1)),    # Top-right
+            Vector((half_width, -half_height, -1)),   # Bottom-right
+            Vector((-half_width, -half_height, -1)),  # Bottom-left
         ]
 
         return corners
